@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "play_with_misskey"
+version = "0.1.0"
+description = ""
+authors = ["Laplusdestiny <prayonshootingstars@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pandas = "*"
+plotly = "*"
+tqdm = "*"
+jupyter = "*"
+requests = "*"
+flake8 = "*"
+ipywidgets = "*"
+jupyterlab = "*"
+jupyter-contrib-nbextensions = "*"
+schedule = "*"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
