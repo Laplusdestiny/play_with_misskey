@@ -8,12 +8,14 @@ from time import sleep
 import schedule
 import argparse
 import json
+from save_sqlite import save_to_db
 
 
 def read_config(path):
     with open(path, "rb") as f:
         config = json.load(f)
     return config
+
 
 def get_result(endpoint, params, host, header):
     result = requests.post(
@@ -24,7 +26,7 @@ def get_result(endpoint, params, host, header):
     return result
 
 
-def main():
+def get_note():
     # 設定情報取得
     config = read_config("config.json")
     misskeyio_config = config["misskey.io"]
@@ -45,8 +47,16 @@ def main():
         noteid = note["id"]
         notelist.append([text, noteid])
     notelist = pd.DataFrame(notelist, columns=["text", "noteid"])
+    save_to_db("misskey.sqlite", notelist, "notelist", if_exists="append")
 
-    # 複数のノートのリアクションを集計する
+    return notelist
+
+
+def get_reaction(notelist):
+    # 設定情報取得
+    config = read_config("config.json")
+    misskeyio_config = config["misskey.io"]
+
     reactionlist = list()
     endpoint = "notes/reactions"
 
@@ -65,11 +75,24 @@ def main():
                 host = reaction["user"]["host"]
                 reactionlist.append([noteid, userId, username, host])
         sleep(0.2)
-    reactionlist = pd.DataFrame(reactionlist, columns=[
-        "noteid", "userid", "username", "host"])
+    reactionlist = pd.DataFrame(
+        reactionlist,
+        columns=["noteid", "userid", "username", "host"]
+    ).fillna({"host": "misskey.io"})
+
+    save_to_db("misskey.sqlite", reactionlist, "reactionlist", if_exists="append")
+
+    return reactionlist
+
+
+def following_user(reactionlist, th: int):
+    # 設定情報取得
+    config = read_config("config.json")
+    misskeyio_config = config["misskey.io"]
+
     # ユーザーをフォローする
     followuserlist = reactionlist.value_counts(subset="userid")
-    followuserlist = followuserlist[followuserlist > 2].index.tolist()
+    followuserlist = followuserlist[followuserlist > th].index.tolist()
 
     endpoint = "following/create"
     pbar = tqdm(followuserlist, desc="following")
@@ -94,17 +117,30 @@ def main():
         if result.status_code == 200:
             follow_num += 1
         pbar.set_postfix(userid=userId, followed_num=follow_num)
-        sleep(5)
+        sleep(2)
+
+
+def main(th=2):
+    notelist = get_note()
+    reactionlist = get_reaction(notelist)
+    following_user(reactionlist, th)
+
 
 schedule.every().saturday.at("13:00").do(main)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-m","--monitor",
+        "-m", "--monitor",
         help="Monitoring mode",
         action="store_true",
         dest="monitor"
+    )
+    parser.add_argument(
+        "-th", "--threshold",
+        help="Threshold value of reaction",
+        dest="th",
+        default=2
     )
     args = parser.parse_args()
     if args.monitor:
@@ -112,4 +148,4 @@ if __name__ == "__main__":
             schedule.run_pending()
             sleep(1)
     else:
-        main()
+        main(int(args.th))
