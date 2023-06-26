@@ -47,7 +47,7 @@ def get_note():
         noteid = note["id"]
         notelist.append([text, noteid])
     notelist = pd.DataFrame(notelist, columns=["text", "noteid"])
-    save_to_db("misskey.sqlite", notelist, "notelist", if_exists="append")
+    save_to_db("misskey.sqlite", notelist, "notelist", if_exists="append", index=False)
 
     return notelist
 
@@ -74,13 +74,13 @@ def get_reaction(notelist):
                 username = reaction["user"]["username"]
                 host = reaction["user"]["host"]
                 reactionlist.append([noteid, userId, username, host])
-        sleep(0.2)
+        sleep(0.05)
     reactionlist = pd.DataFrame(
         reactionlist,
         columns=["noteid", "userid", "username", "host"]
     ).fillna({"host": "misskey.io"})
 
-    save_to_db("misskey.sqlite", reactionlist, "reactionlist", if_exists="append")
+    save_to_db("misskey.sqlite", reactionlist, "reactionlist", if_exists="append", index=False)
 
     return reactionlist
 
