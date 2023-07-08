@@ -4,3 +4,5 @@ nohup.out
 __pycache__/
 .ipynb_checkpoints/
 .vscode/
+misskey.sqlite
+output/*
