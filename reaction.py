@@ -57,8 +57,6 @@ def get_note():
     notelist = notelist[~notelist["noteid"].isin(noteidlist["noteid"].tolist())]
     save_to_db("misskey.sqlite", notelist, "notelist", if_exists="append", index=False)
 
-    # return notelist
-
 
 def get_reaction():
     # 設定情報取得
@@ -71,8 +69,8 @@ def get_reaction():
     # 最新100件分のノートを取得する
     noteidlist = get_data(
         "misskey.sqlite",
-        "select distinct noteid from notelist order by timestamp desc limit 100"
-        )
+        "select distinct noteid from notelist order by timestamp desc limit 50"
+    )
 
     for noteid in tqdm(noteidlist["noteid"].tolist(), desc="Getting reaction..."):
         params = {
@@ -86,7 +84,7 @@ def get_reaction():
                 username = reaction["user"]["username"]
                 host = reaction["user"]["host"]
                 reactionlist.append([noteid, userid, username, host])
-        sleep(0.05)
+        sleep(1)
     reactionlist = pd.DataFrame(
         reactionlist,
         columns=["noteid", "userid", "username", "host"]
@@ -158,7 +156,7 @@ def following_user(th: int):
         if result.status_code == 200:
             follow_num += 1
         pbar.set_postfix(userid=userId, followed_num=follow_num)
-        sleep(2)
+        sleep(1)
 
 
 def add_users_into_list():
@@ -193,6 +191,7 @@ def add_users_into_list():
             "listId": target_list_id
         }
         get_result(endpoint, params, misskeyio_config["host"], misskeyio_config["header"])
+        sleep(1)
 
 
 def main(th=2):
