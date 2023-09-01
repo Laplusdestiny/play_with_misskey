@@ -58,7 +58,7 @@ def get_note():
     save_to_db("misskey.sqlite", notelist, "notelist", if_exists="append", index=False)
 
 
-def get_reaction():
+def get_reaction(th: int):
     # 設定情報取得
     config = read_config("config.json")
     misskeyio_config = config["misskey.io"]
@@ -66,10 +66,10 @@ def get_reaction():
     reactionlist = list()
     endpoint = "notes/reactions"
 
-    # 最新100件分のノートを取得する
+    # 最新のth件分のノートを取得する
     noteidlist = get_data(
         "misskey.sqlite",
-        "select distinct noteid from notelist order by timestamp desc limit 50"
+        f"select distinct noteid from notelist order by timestamp desc limit {th}"
     )
 
     for noteid in tqdm(noteidlist["noteid"].tolist(), desc="Getting reaction..."):
@@ -194,10 +194,10 @@ def add_users_into_list():
         sleep(1)
 
 
-def main(th=2):
+def main(args):
     get_note()
-    get_reaction()
-    following_user(th)
+    get_reaction(int(args.reaction_th))
+    following_user(int(args.follow_th))
     add_users_into_list()
 
 
@@ -212,9 +212,15 @@ if __name__ == "__main__":
         dest="monitor"
     )
     parser.add_argument(
-        "-th", "--threshold",
-        help="Threshold value of reaction",
-        dest="th",
+        "-rth", "--reaction_th",
+        help="Threshold of reaction number",
+        dest="reaction_th",
+        default=50
+    )
+    parser.add_argument(
+        "-fth", "--follow_th",
+        help="Threashold of follow number",
+        dest="follow_th",
         default=2
     )
     args = parser.parse_args()
@@ -223,4 +229,4 @@ if __name__ == "__main__":
             schedule.run_pending()
             sleep(1)
     else:
-        main(int(args.th))
+        main(args)
