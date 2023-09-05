@@ -10,6 +10,13 @@ import argparse
 import json
 from connect_sqlite import save_to_db, get_data
 import datetime
+from logging import basicConfig, INFO, info, error
+
+basicConfig(
+    filename="reaction.log",
+    level=INFO,
+    format="%(asctime)s - %(levelname)s:%(name)s - %(message)s"
+)
 
 
 def read_config(path):
@@ -28,6 +35,7 @@ def get_result(endpoint, params, host, header):
 
 
 def get_note():
+    info("Start getting note")
     # 設定情報取得
     config = read_config("config.json")
     misskeyio_config = config["misskey.io"]
@@ -40,11 +48,16 @@ def get_note():
         "limit": 100,   # max 100
         "includeMyRenotes": False,
     }
-    result2 = get_result(endpoint, params, misskeyio_config["host"], misskeyio_config["header"])
+    try:
+        result2 = get_result(endpoint, params, misskeyio_config["host"], misskeyio_config["header"])
+        result_parse = result2.json()
+    except requests.exceptions.JSONDecodeError as e:
+        error(e)
+        raise e
 
     # DataFrameにparseする
     notelist = list()
-    for note in tqdm(result2.json(), desc="Getting note..."):
+    for note in tqdm(result_parse, desc="Getting note..."):
         text = note["text"]
         noteid = note["id"]
         timestamp = note["createdAt"]
@@ -59,6 +72,7 @@ def get_note():
 
 
 def get_reaction(th: int):
+    info("Start to get reaction")
     # 設定情報取得
     config = read_config("config.json")
     misskeyio_config = config["misskey.io"]
@@ -77,14 +91,18 @@ def get_reaction(th: int):
             "i": misskeyio_config["token"],
             "noteId": noteid,
         }
-        response = get_result(endpoint, params, misskeyio_config["host"], misskeyio_config["header"])
-        if len(response.json()) > 0:
-            for reaction in response.json():
-                userid = reaction["user"]["id"]
-                username = reaction["user"]["username"]
-                host = reaction["user"]["host"]
-                reactionlist.append([noteid, userid, username, host])
-        sleep(1)
+        try:
+            response = get_result(endpoint, params, misskeyio_config["host"], misskeyio_config["header"])
+            if len(response.json()) > 0:
+                for reaction in response.json():
+                    userid = reaction["user"]["id"]
+                    username = reaction["user"]["username"]
+                    host = reaction["user"]["host"]
+                    reactionlist.append([noteid, userid, username, host])
+            sleep(1)
+        except requests.exceptions.JSONDecodeError as e:
+            error(e)
+
     reactionlist = pd.DataFrame(
         reactionlist,
         columns=["noteid", "userid", "username", "host"]
@@ -103,6 +121,7 @@ def get_reaction(th: int):
 
 
 def following_user(th: int):
+    info("Start to follow users")
     # 直近1週間のノートのリアクション数を集計
     now = datetime.datetime.now()
     span = datetime.timedelta(days=7)
@@ -224,6 +243,7 @@ if __name__ == "__main__":
         default=2
     )
     args = parser.parse_args()
+    info(f"Start (Mode:{args.monitor}, [{args.reaction_th}, {args.follow_th}])")
     if args.monitor:
         while True:
             schedule.run_pending()
