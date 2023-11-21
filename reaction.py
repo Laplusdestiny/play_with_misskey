@@ -15,7 +15,7 @@ from logging import basicConfig, INFO, info, error
 basicConfig(
     filename="reaction.log",
     level=INFO,
-    format="%(asctime)s - %(levelname)s:%(name)s - %(message)s"
+    format="%(asctime)s - %(levelname)s:%(name)s - %(message)s",
 )
 
 
@@ -26,11 +26,7 @@ def read_config(path):
 
 
 def get_result(endpoint, params, host, header):
-    result = requests.post(
-        host + endpoint,
-        headers=header,
-        json=params
-    )
+    result = requests.post(host + endpoint, headers=header, json=params)
     return result
 
 
@@ -45,11 +41,13 @@ def get_note():
     params = {
         "i": misskeyio_config["token"],
         "userId": misskeyio_config["my_userid"],
-        "limit": 100,   # max 100
+        "limit": 100,  # max 100
         "includeMyRenotes": False,
     }
     try:
-        result2 = get_result(endpoint, params, misskeyio_config["host"], misskeyio_config["header"])
+        result2 = get_result(
+            endpoint, params, misskeyio_config["host"], misskeyio_config["header"]
+        )
         result_parse = result2.json()
     except requests.exceptions.JSONDecodeError as e:
         error(e)
@@ -59,11 +57,15 @@ def get_note():
     notelist = list()
     for note in tqdm(result_parse, desc="Getting note..."):
         text = note["text"]
+        if text is None:
+            continue
         noteid = note["id"]
         timestamp = note["createdAt"]
         notelist.append([text, noteid, timestamp])
     notelist = pd.DataFrame(notelist, columns=["text", "noteid", "timestamp"])
-    notelist["timestamp"] = pd.to_datetime(notelist["timestamp"]).dt.tz_convert("Asia/Tokyo")
+    notelist["timestamp"] = pd.to_datetime(notelist["timestamp"], utc=True).dt.tz_convert(
+        "Asia/Tokyo"
+    )
 
     # 保存していないもののみを抽出する
     noteidlist = get_data("misskey.sqlite", "select distinct noteid from notelist")
@@ -83,7 +85,7 @@ def get_reaction(th: int):
     # 最新のth件分のノートを取得する
     noteidlist = get_data(
         "misskey.sqlite",
-        f"select distinct noteid from notelist order by timestamp desc limit {th}"
+        f"select distinct noteid from notelist order by timestamp desc limit {th}",
     )
 
     for noteid in tqdm(noteidlist["noteid"].tolist(), desc="Getting reaction..."):
@@ -92,7 +94,9 @@ def get_reaction(th: int):
             "noteId": noteid,
         }
         try:
-            response = get_result(endpoint, params, misskeyio_config["host"], misskeyio_config["header"])
+            response = get_result(
+                endpoint, params, misskeyio_config["host"], misskeyio_config["header"]
+            )
             if len(response.json()) > 0:
                 for reaction in response.json():
                     userid = reaction["user"]["id"]
@@ -104,20 +108,26 @@ def get_reaction(th: int):
             error(e)
 
     reactionlist = pd.DataFrame(
-        reactionlist,
-        columns=["noteid", "userid", "username", "host"]
+        reactionlist, columns=["noteid", "userid", "username", "host"]
     ).fillna({"host": "misskey.io"})
 
     # 保存していないリアクションのみを抽出する
-    reactionlist_all = get_data("misskey.sqlite", "select distinct noteid, userid from reactionlist")
-    reactionlist_all = reactionlist.merge(
-        reactionlist_all,
-        how="outer",
-        on=["noteid", "userid"],
-        indicator=True
+    reactionlist_all = get_data(
+        "misskey.sqlite", "select distinct noteid, userid from reactionlist"
     )
-    reactionlist_all = reactionlist_all.query("_merge=='left_only'")[["noteid", "userid", "username", "host"]]
-    save_to_db("misskey.sqlite", reactionlist_all, "reactionlist", if_exists="append", index=False)
+    reactionlist_all = reactionlist.merge(
+        reactionlist_all, how="outer", on=["noteid", "userid"], indicator=True
+    )
+    reactionlist_all = reactionlist_all.query("_merge=='left_only'")[
+        ["noteid", "userid", "username", "host"]
+    ]
+    save_to_db(
+        "misskey.sqlite",
+        reactionlist_all,
+        "reactionlist",
+        if_exists="append",
+        index=False,
+    )
 
 
 def following_user(th: int):
@@ -142,7 +152,7 @@ def following_user(th: int):
         where
             timestamp >= '{start_date}'
         order by timestamp
-        """
+        """,
     )
     # 設定情報取得
     config = read_config("config.json")
@@ -159,19 +169,17 @@ def following_user(th: int):
     follow_num = 0
     for userId in pbar:
         # pbar.set_description(userId)
-        params = {
-            "i": misskeyio_config["token"],
-            "userId": userId
-        }
-        result = get_result(endpoint, params, misskeyio_config["host"], misskeyio_config["header"])
+        params = {"i": misskeyio_config["token"], "userId": userId}
+        result = get_result(
+            endpoint, params, misskeyio_config["host"], misskeyio_config["header"]
+        )
         if result.status_code == 200:
             follow_num += 1
 
-        params = {
-            "i": misskeycl_config["token"],
-            "userId": userId
-        }
-        result = get_result(endpoint, params, misskeycl_config["host"], misskeycl_config["header"])
+        params = {"i": misskeycl_config["token"], "userId": userId}
+        result = get_result(
+            endpoint, params, misskeycl_config["host"], misskeycl_config["header"]
+        )
         if result.status_code == 200:
             follow_num += 1
         pbar.set_postfix(userid=userId, followed_num=follow_num)
@@ -191,7 +199,7 @@ def add_users_into_list():
                 userid not in ('7rkr3b1c1c', '82qrp4qp16')
             group by userid, username
             order by num desc
-        """
+        """,
     )
     reaction_count["percent"] = reaction_count["num"] / reaction_count["num"].sum()
 
@@ -207,9 +215,11 @@ def add_users_into_list():
         params = {
             "i": misskeyio_config["token"],
             "userId": userid,
-            "listId": target_list_id
+            "listId": target_list_id,
         }
-        get_result(endpoint, params, misskeyio_config["host"], misskeyio_config["header"])
+        get_result(
+            endpoint, params, misskeyio_config["host"], misskeyio_config["header"]
+        )
         sleep(1)
 
 
@@ -225,22 +235,21 @@ schedule.every().saturday.at("13:00").do(main)
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-m", "--monitor",
-        help="Monitoring mode",
-        action="store_true",
-        dest="monitor"
+        "-m", "--monitor", help="Monitoring mode", action="store_true", dest="monitor"
     )
     parser.add_argument(
-        "-rth", "--reaction_th",
+        "-rth",
+        "--reaction_th",
         help="Threshold of reaction number",
         dest="reaction_th",
-        default=50
+        default=50,
     )
     parser.add_argument(
-        "-fth", "--follow_th",
+        "-fth",
+        "--follow_th",
         help="Threashold of follow number",
         dest="follow_th",
-        default=2
+        default=2,
     )
     args = parser.parse_args()
     info(f"Start (Mode:{args.monitor}, [{args.reaction_th}, {args.follow_th}])")
