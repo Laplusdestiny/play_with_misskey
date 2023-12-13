@@ -242,14 +242,14 @@ if __name__ == "__main__":
         "--reaction_th",
         help="Threshold of reaction number",
         dest="reaction_th",
-        default=50,
+        default=100,
     )
     parser.add_argument(
         "-fth",
         "--follow_th",
         help="Threashold of follow number",
         dest="follow_th",
-        default=2,
+        default=5,
     )
     args = parser.parse_args()
     info(f"Start (Mode:{args.monitor}, [{args.reaction_th}, {args.follow_th}])")
