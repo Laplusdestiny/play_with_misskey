@@ -1,5 +1,4 @@
 config.json
-poetry.lock
 nohup.out
 __pycache__/
 .ipynb_checkpoints/

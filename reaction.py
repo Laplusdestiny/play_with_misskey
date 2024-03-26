@@ -18,6 +18,8 @@ basicConfig(
     format="%(asctime)s - %(levelname)s:%(name)s - %(message)s",
 )
 
+args = None
+
 
 def read_config(path):
     with open(path, "rb") as f:
@@ -63,9 +65,9 @@ def get_note():
         timestamp = note["createdAt"]
         notelist.append([text, noteid, timestamp])
     notelist = pd.DataFrame(notelist, columns=["text", "noteid", "timestamp"])
-    notelist["timestamp"] = pd.to_datetime(notelist["timestamp"], utc=True).dt.tz_convert(
-        "Asia/Tokyo"
-    )
+    notelist["timestamp"] = pd.to_datetime(
+        notelist["timestamp"], utc=True
+    ).dt.tz_convert("Asia/Tokyo")
 
     # 保存していないもののみを抽出する
     noteidlist = get_data("misskey.sqlite", "select distinct noteid from notelist")
@@ -168,7 +170,6 @@ def following_user(th: int):
     misskeycl_config = config["misskey.cloud"]
     follow_num = 0
     for userId in pbar:
-        # pbar.set_description(userId)
         params = {"i": misskeyio_config["token"], "userId": userId}
         result = get_result(
             endpoint, params, misskeyio_config["host"], misskeyio_config["header"]
@@ -230,7 +231,7 @@ def main(args):
     add_users_into_list()
 
 
-schedule.every().saturday.at("13:00").do(main)
+schedule.every().saturday.at("13:00").do(main, args=args)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -252,6 +253,7 @@ if __name__ == "__main__":
         default=5,
     )
     args = parser.parse_args()
+
     info(f"Start (Mode:{args.monitor}, [{args.reaction_th}, {args.follow_th}])")
     if args.monitor:
         while True:
