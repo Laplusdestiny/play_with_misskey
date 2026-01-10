@@ -12,7 +12,6 @@ Run:
 """
 
 import sqlite3
-import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,15 +21,15 @@ DB_PATH = ROOT / "misskey.sqlite"
 NOTELIST_SCHEMA = """
 CREATE TABLE IF NOT EXISTS notelist (
     text TEXT,
-    noteid TEXT,
+    noteid TEXT PRIMARY KEY,
     timestamp TEXT
 );
 """
 
 REACTIONLIST_SCHEMA = """
 CREATE TABLE IF NOT EXISTS reactionlist (
-    noteid TEXT,
-    userid TEXT,
+    noteid TEXT PRIMARY KEY,
+    userid TEXT SORTKEY,
     username TEXT,
     host TEXT
 );
