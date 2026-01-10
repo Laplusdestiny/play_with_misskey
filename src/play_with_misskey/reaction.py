@@ -22,17 +22,44 @@ args = None
 
 
 def read_config(path):
+    """設定ファイルを読み込んでJSON形式で返す
+
+    Args:
+        path (str): 設定ファイルのパス
+
+    Returns:
+        dict: 設定情報
+    """
     with open(path, "rb") as f:
         config = json.load(f)
     return config
 
 
 def get_result(endpoint, params, host, header):
+    """Misskey APIへPOSTリクエストを送信する
+
+    Args:
+        endpoint (str): APIエンドポイント
+        params (dict): リクエストパラメータ
+        host (str): ホストURL
+        header (dict): リクエストヘッダ
+
+    Returns:
+        requests.Response: APIレスポンス
+    """
     result = requests.post(host + endpoint, headers=header, json=params)
     return result
 
 
 def get_note():
+    """ユーザーのノート(投稿)をMisskey APIから取得し、DBに保存する
+
+    新規のノートのみを抽出してデータベースに追加される。
+    タイムゾーンはAsia/Tokyoに統一される。
+
+    Raises:
+        requests.exceptions.JSONDecodeError: APIレスポンスがJSON形式でない場合
+    """
     info("Start getting note")
     # 設定情報取得
     config = read_config("config.json")
@@ -76,6 +103,14 @@ def get_note():
 
 
 def get_reaction(th: int):
+    """最新のノートのリアクション情報をAPIから取得し、DBに保存する
+
+    Args:
+        th (int): 取得対象とするノート数(最新のth件)
+
+    リアクション情報のうち、未保存のもののみを抽出して追加される。
+    APIレスポンスエラーはログに記録されるが、処理は継続される。
+    """
     info("Start to get reaction")
     # 設定情報取得
     config = read_config("config.json")
@@ -133,6 +168,13 @@ def get_reaction(th: int):
 
 
 def following_user(th: int):
+    """過去1週間のリアクション数が閾値以上のユーザーをフォローする
+
+    Args:
+        th (int): フォロー対象となるリアクション数の閾値
+
+    複数のMistkeyインスタンス(misskey.io, misskey.cloud)でフォローが実行される。
+    """
     info("Start to follow users")
     # 直近1週間のノートのリアクション数を集計
     now = datetime.datetime.now()
@@ -188,43 +230,66 @@ def following_user(th: int):
 
 
 def add_users_into_list():
+    """リアクション数が多いユーザーをリストに追加する
+
+    リアクション数の全体に対する割合が2%以上のユーザーが対象となる。
+    除外対象のユーザーIDは設定ファイルで指定可能。
+    """
+    # 設定情報取得
+    config = read_config("config.json")
+    misskeyio_config = config["misskey.io"]
+    exclude_userids = config.get("exclude_userids", [])
+    exclude_condition = "', '".join(exclude_userids) if exclude_userids else ""
+    exclude_where = (
+        f"userid not in ('{exclude_condition}')" if exclude_condition else ""
+    )
+
     reaction_count = get_data(
         "misskey.sqlite",
-        """
+        f"""
             select
                 userid,
                 username,
                 count(noteid) as num
             from reactionlist
             where
-                userid not in ('7rkr3b1c1c', '82qrp4qp16')
+                {exclude_where}
             group by userid, username
             order by num desc
         """,
     )
     reaction_count["percent"] = reaction_count["num"] / reaction_count["num"].sum()
 
-    # 設定情報取得
-    config = read_config("config.json")
-    misskeyio_config = config["misskey.io"]
     target_list_id = misskeyio_config["target_list_id"]
 
     # リストに追加する
     target_userid_list = reaction_count.query("percent >= 0.02")["userid"].tolist()
     endpoint = "users/lists/push"
-    for userid in tqdm(target_userid_list, desc="Adding user into list..."):
+    pbar = tqdm(target_userid_list, desc="Adding user into list...")
+    added_user_num = 0
+    for userid in pbar:
         params = {
             "i": misskeyio_config["token"],
             "userId": userid,
             "listId": target_list_id,
         }
-        get_result(
+        result = get_result(
             endpoint, params, misskeyio_config["host"], misskeyio_config["header"]
         )
+
+        if result.status_code == 200:
+            added_user_num += 1
+
+        pbar.set_postfix(added_user_num=added_user_num)
         sleep(1)
 
 
 def main(args):
+    """メイン処理を実行する
+
+    Args:
+        args (argparse.Namespace): コマンドライン引数
+    """
     get_note()
     get_reaction(int(args.reaction_th))
     following_user(int(args.follow_th))
