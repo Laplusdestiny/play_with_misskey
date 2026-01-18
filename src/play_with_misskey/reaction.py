@@ -238,7 +238,7 @@ def add_users_into_list():
     # 設定情報取得
     config = read_config("config.json")
     misskeyio_config = config["misskey.io"]
-    exclude_userids = config.get("exclude_userids", [])
+    exclude_userids = misskeyio_config.get("exclude_userids", [])
     exclude_condition = "', '".join(exclude_userids) if exclude_userids else ""
     exclude_where = (
         f"userid not in ('{exclude_condition}')" if exclude_condition else ""
