@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import requests
+from misskey import Misskey
+from misskey.exceptions import MisskeyAPIException
 import pandas as pd
 from tqdm.auto import tqdm
 from time import sleep
@@ -13,7 +14,7 @@ import datetime
 from logging import basicConfig, INFO, info, error
 
 basicConfig(
-    filename="reaction.log",
+    filename="log/reaction.log",
     level=INFO,
     format="%(asctime)s - %(levelname)s:%(name)s - %(message)s",
 )
@@ -35,20 +36,19 @@ def read_config(path):
     return config
 
 
-def get_result(endpoint, params, host, header):
-    """Misskey APIへPOSTリクエストを送信する
+def create_client(instance_config):
+    """設定情報からMisskeyクライアントを生成する
 
     Args:
-        endpoint (str): APIエンドポイント
-        params (dict): リクエストパラメータ
-        host (str): ホストURL
-        header (dict): リクエストヘッダ
+        instance_config (dict): インスタンスの設定情報(address, tokenを含む)
 
     Returns:
-        requests.Response: APIレスポンス
+        Misskey: Misskeyクライアントインスタンス
     """
-    result = requests.post(host + endpoint, headers=header, json=params)
-    return result
+    return Misskey(
+        address=instance_config["address"],
+        i=instance_config["token"],
+    )
 
 
 def get_note():
@@ -58,27 +58,24 @@ def get_note():
     タイムゾーンはAsia/Tokyoに統一される。
 
     Raises:
-        requests.exceptions.JSONDecodeError: APIレスポンスがJSON形式でない場合
+        MisskeyAPIException: APIリクエストが失敗した場合
     """
     info("Start getting note")
     # 設定情報取得
     config = read_config("config.json")
     misskeyio_config = config["misskey.io"]
 
+    # Misskeyクライアント生成
+    mk = create_client(misskeyio_config)
+
     # ノート取得
-    endpoint = "users/notes"
-    params = {
-        "i": misskeyio_config["token"],
-        "userId": misskeyio_config["my_userid"],
-        "limit": 100,  # max 100
-        "includeMyRenotes": False,
-    }
     try:
-        result2 = get_result(
-            endpoint, params, misskeyio_config["host"], misskeyio_config["header"]
+        result_parse = mk.users_notes(
+            user_id=misskeyio_config["my_userid"],
+            limit=100,
+            include_my_renotes=False,
         )
-        result_parse = result2.json()
-    except requests.exceptions.JSONDecodeError as e:
+    except (MisskeyAPIException, json.JSONDecodeError) as e:
         error(e)
         raise e
 
@@ -116,8 +113,10 @@ def get_reaction(th: int):
     config = read_config("config.json")
     misskeyio_config = config["misskey.io"]
 
+    # Misskeyクライアント生成
+    mk = create_client(misskeyio_config)
+
     reactionlist = list()
-    endpoint = "notes/reactions"
 
     # 最新のth件分のノートを取得する
     noteidlist = get_data(
@@ -126,22 +125,16 @@ def get_reaction(th: int):
     )
 
     for noteid in tqdm(noteidlist["noteid"].tolist(), desc="Getting reaction..."):
-        params = {
-            "i": misskeyio_config["token"],
-            "noteId": noteid,
-        }
         try:
-            response = get_result(
-                endpoint, params, misskeyio_config["host"], misskeyio_config["header"]
-            )
-            if len(response.json()) > 0:
-                for reaction in response.json():
+            reactions = mk.notes_reactions(note_id=noteid)
+            if len(reactions) > 0:
+                for reaction in reactions:
                     userid = reaction["user"]["id"]
                     username = reaction["user"]["username"]
                     host = reaction["user"]["host"]
                     reactionlist.append([noteid, userid, username, host])
             sleep(1)
-        except requests.exceptions.JSONDecodeError as e:
+        except (MisskeyAPIException, json.JSONDecodeError) as e:
             error(e)
 
     reactionlist = pd.DataFrame(
@@ -173,7 +166,7 @@ def following_user(th: int):
     Args:
         th (int): フォロー対象となるリアクション数の閾値
 
-    複数のMistkeyインスタンス(misskey.io, misskey.cloud)でフォローが実行される。
+    複数のMisskeyインスタンス(misskey.io, misskey.cloud)でフォローが実行される。
     """
     info("Start to follow users")
     # 直近1週間のノートのリアクション数を集計
@@ -201,30 +194,32 @@ def following_user(th: int):
     # 設定情報取得
     config = read_config("config.json")
     misskeyio_config = config["misskey.io"]
+    misskeycl_config = config["misskey.cloud"]
+
+    # Misskeyクライアント生成
+    mk_io = create_client(misskeyio_config)
+    mk_cl = create_client(misskeycl_config)
 
     # ユーザーをフォローする
     followuserlist = reactionlist.value_counts(subset="userid")
     followuserlist = followuserlist[followuserlist > th].index.tolist()
 
-    endpoint = "following/create"
     pbar = tqdm(followuserlist, desc="following")
 
-    misskeycl_config = config["misskey.cloud"]
     follow_num = 0
     for userId in pbar:
-        params = {"i": misskeyio_config["token"], "userId": userId}
-        result = get_result(
-            endpoint, params, misskeyio_config["host"], misskeyio_config["header"]
-        )
-        if result.status_code == 200:
+        try:
+            mk_io.following_create(user_id=userId)
             follow_num += 1
+        except (MisskeyAPIException, json.JSONDecodeError):
+            pass
 
-        params = {"i": misskeycl_config["token"], "userId": userId}
-        result = get_result(
-            endpoint, params, misskeycl_config["host"], misskeycl_config["header"]
-        )
-        if result.status_code == 200:
+        try:
+            mk_cl.following_create(user_id=userId)
             follow_num += 1
+        except (MisskeyAPIException, json.JSONDecodeError):
+            pass
+
         pbar.set_postfix(userid=userId, followed_num=follow_num)
         sleep(1)
 
@@ -262,23 +257,19 @@ def add_users_into_list():
 
     target_list_id = misskeyio_config["target_list_id"]
 
+    # Misskeyクライアント生成
+    mk = create_client(misskeyio_config)
+
     # リストに追加する
     target_userid_list = reaction_count.query("percent >= 0.02")["userid"].tolist()
-    endpoint = "users/lists/push"
     pbar = tqdm(target_userid_list, desc="Adding user into list...")
     added_user_num = 0
     for userid in pbar:
-        params = {
-            "i": misskeyio_config["token"],
-            "userId": userid,
-            "listId": target_list_id,
-        }
-        result = get_result(
-            endpoint, params, misskeyio_config["host"], misskeyio_config["header"]
-        )
-
-        if result.status_code == 200:
+        try:
+            mk.users_lists_push(list_id=target_list_id, user_id=userid)
             added_user_num += 1
+        except (MisskeyAPIException, json.JSONDecodeError):
+            pass
 
         pbar.set_postfix(added_user_num=added_user_num)
         sleep(1)

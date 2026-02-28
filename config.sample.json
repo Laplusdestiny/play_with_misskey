@@ -2,17 +2,11 @@
   "misskey.io": {
     "token": "YOUR_MISSKEY_IO_TOKEN",
     "my_userid": "YOUR_USER_ID_ON_MISSKEY_IO",
-    "host": "https://misskey.io/api/",
-    "header": {
-      "Content-Type": "application/json"
-    },
+    "address": "https://misskey.io",
     "target_list_id": "YOUR_TARGET_LIST_ID"
   },
   "misskey.cloud": {
     "token": "YOUR_MISSKEY_CLOUD_TOKEN",
-    "host": "https://misskey.cloud/api/",
-    "header": {
-      "Content-Type": "application/json"
-    }
+    "address": "https://misskey.cloud"
   }
 }
